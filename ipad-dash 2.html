@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dash</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dash">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{margin:0;height:100%;background:#000;color:#fff;font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;overflow:hidden}
+body{display:-webkit-flex;display:flex;padding:24px}
+#left{width:34%;display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column;-webkit-justify-content:center;justify-content:center;padding-right:24px}
+#time{font-size:7vw;font-weight:200;letter-spacing:-1px;line-height:1}
+#ampm{font-size:2.4vw;font-weight:300;color:#8e8e93;margin-left:6px;letter-spacing:0}
+#date{font-size:2.6vw;color:#8e8e93;margin-top:12px}
+.btns{margin-top:40px}
+#edit,#exit{margin-right:12px;background:#1c1c1e;color:#0a84ff;border:0;border-radius:14px;padding:14px 26px;font-size:20px}
+#exit{color:#ff453a}
+.sw{display:block;width:100%;margin-top:14px;background:#0a84ff;color:#fff;border:0;border-radius:18px;padding:24px 0;font-size:26px}
+.sw.v{background:#bf5af2}
+.two{display:-webkit-flex;display:flex;margin:14px -7px 0}
+.two .sw{margin:0 7px;width:auto;-webkit-flex:1;flex:1}
+.sw:active{opacity:.7}
+#edit.on{background:#ff9f0a;color:#000}
+#right{-webkit-flex:1;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+h2{font-size:18px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px 6px}
+.grid{display:-webkit-flex;display:flex;-webkit-flex-wrap:wrap;flex-wrap:wrap;margin:0 -8px 22px}
+.tile{display:block;width:25%;padding:8px;text-decoration:none;color:#fff}
+.tile div{background:#1c1c1e;border-radius:26px;height:150px;display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center}
+.tile:active div{background:#3a3a3c}
+.tile i{font-style:normal;font-size:54px;line-height:1}
+.tile span{font-size:20px;margin-top:10px;max-width:90%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.editing .tile div{background:#3b2a00}
+.add div{background:#0b2a4a !important;color:#0a84ff}
+#blank{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:99;color:#3a3a3c;font-size:22px;text-align:center;padding-top:44%}
+#blank p{margin:0 auto;max-width:520px}
+</style>
+</head>
+<body>
+<div id="left">
+  <div><span id="time"></span><span id="ampm"></span></div>
+  <div id="date"></div>
+  <button id="map" class="sw" type="button">Map</button>
+  <div class="two"><button id="yt" class="sw v" type="button">YouTube</button><button id="vlc" class="sw v" type="button">VLC</button></div>
+  <div class="btns"><button id="edit" type="button">Edit</button><button id="exit" type="button">Exit</button></div>
+</div>
+<div id="right">
+  <h2>Navigate</h2>
+  <div class="grid" id="nav"></div>
+  <h2>Apps</h2>
+  <div class="grid" id="apps"></div>
+</div>
+<div id="blank"><p>Screen dimmed. Press the Home button to leave the app, or tap anywhere to return.</p></div>
+<script>
+(function () {
+  var KEY = 'dash1';
+  var defaults = {
+    nav: [
+      { l: 'Home', i: '\uD83C\uDFE0', a: '' },
+      { l: 'Work', i: '\uD83D\uDCBC', a: '' },
+      { l: 'Gas', i: '\u26FD', q: 'gas station' },
+      { l: 'Coffee', i: '\u2615', q: 'coffee' }
+    ],
+    apps: [
+      { l: 'Music', i: '\uD83C\uDFB5', u: 'music://' },
+      { l: 'Phone', i: '\uD83D\uDCDE', u: 'tel://' },
+      { l: 'Messages', i: '\uD83D\uDCAC', u: 'sms://' },
+      { l: 'Podcasts', i: '\uD83C\uDF99', u: 'podcast://' },
+      { l: 'Spotify', i: '\uD83C\uDFA7', u: 'spotify://' },
+      { l: 'Waze', i: '\uD83D\uDE97', u: 'waze://' },
+      { l: 'YouTube', i: '\u25B6\uFE0F', u: 'youtube://' }
+    ]
+  };
+  var data, editing = false;
+
+  function load() {
+    try {
+      var s = window.localStorage.getItem(KEY);
+      if (s) { data = JSON.parse(s); }
+    } catch (e) {}
+    if (!data || !data.nav || !data.apps) {
+      data = JSON.parse(JSON.stringify(defaults));
+    }
+  }
+  function save() {
+    try { window.localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+  }
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  }
+  var ENG = ['apple', 'google', 'sygic'];
+  var ENGNAME = { apple: 'Apple Maps', google: 'Google Maps', sygic: 'Sygic' };
+  function eng() { return ENGNAME[data.engine] ? data.engine : 'apple'; }
+  var VID = ['youtube', 'vlc', 'infuse', 'videos'];
+  var VIDNAME = { youtube: 'YouTube', vlc: 'VLC', infuse: 'Infuse', videos: 'Videos' };
+  var VIDURL = { youtube: 'youtube://', vlc: 'vlc://', infuse: 'infuse://', videos: 'videos://' };
+  function vid() { return VIDNAME[data.video] ? data.video : 'youtube'; }
+  function mapUrl() {
+    var e = eng();
+    if (e === 'sygic') { return 'com.sygic.aura://'; }
+    if (e === 'google') { return 'comgooglemaps://'; }
+    return 'http://maps.apple.com/';
+  }
+  function navUrl(it) {
+    var e = eng();
+    if (e === 'sygic') { return 'com.sygic.aura://'; }
+    if (e === 'google') {
+      if (it.q) { return 'comgooglemaps://?q=' + encodeURIComponent(it.q); }
+      return 'comgooglemaps://?directionsmode=driving&daddr=' + encodeURIComponent(it.a);
+    }
+    if (it.q) { return 'http://maps.apple.com/?q=' + encodeURIComponent(it.q); }
+    return 'http://maps.apple.com/?dirflg=d&daddr=' + encodeURIComponent(it.a);
+  }
+  function tile(kind, idx, it) {
+    return '<a class="tile" href="#" data-k="' + kind + '" data-i="' + idx + '"><div><i>' +
+      it.i + '</i><span>' + esc(it.l) + '</span></div></a>';
+  }
+  function render() {
+    var h = '', j;
+    for (j = 0; j < data.nav.length; j++) { h += tile('nav', j, data.nav[j]); }
+    if (editing) {
+      h += '<a class="tile add" href="#" data-k="nav" data-i="add"><div><i>+</i><span>Add place</span></div></a>';
+      h += '<a class="tile add" href="#" data-k="nav" data-i="eng"><div><i>\uD83E\uDDED</i><span>Nav: ' + ENGNAME[eng()] + '</span></div></a>';
+    }
+    document.getElementById('nav').innerHTML = h;
+    h = '';
+    for (j = 0; j < data.apps.length; j++) { h += tile('apps', j, data.apps[j]); }
+    if (editing) { h += '<a class="tile add" href="#" data-k="apps" data-i="add"><div><i>+</i><span>Add app</span></div></a>'; }
+    document.getElementById('apps').innerHTML = h;
+    document.body.className = editing ? 'editing' : '';
+    var b = document.getElementById('edit');
+    b.innerHTML = editing ? 'Done' : 'Edit';
+    document.getElementById('map').innerHTML = '&#x1F5FA; ' + ENGNAME[eng()];
+    b.className = editing ? 'on' : '';
+  }
+  function go(url) { window.location.href = url; }
+
+  function onTap(e) {
+    var el = e.target;
+    while (el && el !== document && !(el.getAttribute && el.getAttribute('data-k'))) { el = el.parentNode; }
+    if (!el || el === document) { return; }
+    e.preventDefault();
+    var k = el.getAttribute('data-k'), i = el.getAttribute('data-i'), it, label, v;
+    if (i === 'vid') {
+      data.video = VID[(VID.indexOf(vid()) + 1) % VID.length];
+      save(); render(); return;
+    }
+    if (i === 'eng') {
+      data.engine = ENG[(ENG.indexOf(eng()) + 1) % ENG.length];
+      save(); render(); return;
+    }
+    if (i === 'add') {
+      label = window.prompt(k === 'nav' ? 'Place name (e.g. Gym)' : 'App name (e.g. Netflix)');
+      if (!label) { return; }
+      if (k === 'nav') {
+        v = window.prompt('Address for ' + label);
+        if (!v) { return; }
+        data.nav.push({ l: label, i: '\uD83D\uDCCD', a: v });
+      } else {
+        v = window.prompt('URL scheme for ' + label + ' (e.g. nflx://)');
+        if (!v) { return; }
+        data.apps.push({ l: label, i: '\uD83D\uDCF1', u: v });
+      }
+      save(); render(); return;
+    }
+    it = data[k][parseInt(i, 10)];
+    if (editing) {
+      if (window.confirm('Remove ' + it.l + '?')) { data[k].splice(parseInt(i, 10), 1); save(); render(); }
+      return;
+    }
+    if (k === 'apps') { go(it.u); return; }
+    if (!it.q && !it.a) {
+      v = window.prompt('Set address for ' + it.l);
+      if (!v) { return; }
+      it.a = v; save();
+    }
+    go(navUrl(it));
+  }
+
+  var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  function tick() {
+    var d = new Date(), h = d.getHours(), m = d.getMinutes();
+    var ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12; if (h === 0) { h = 12; }
+    document.getElementById('time').innerHTML = h + ':' + (m < 10 ? '0' : '') + m;
+    document.getElementById('ampm').innerHTML = ap;
+    document.getElementById('date').innerHTML = DAYS[d.getDay()] + ', ' + MONTHS[d.getMonth()] + ' ' + d.getDate();
+  }
+
+  load(); render(); tick();
+  window.setInterval(tick, 1000);
+  document.getElementById('right').addEventListener('click', onTap, false);
+  document.getElementById('edit').addEventListener('click', function () { editing = !editing; render(); }, false);
+  document.getElementById('exit').addEventListener('click', function () { document.getElementById('blank').style.display = 'block'; }, false);
+  document.getElementById('blank').addEventListener('click', function () { this.style.display = 'none'; }, false);
+  document.getElementById('map').addEventListener('click', function () { go(mapUrl()); }, false);
+  document.getElementById('yt').addEventListener('click', function () { go('youtube://'); }, false);
+  document.getElementById('vlc').addEventListener('click', function () { go('vlc://'); }, false);
+})();
+</script>
+</body>
+</html>
